@@ -18,9 +18,16 @@ def user_inputs():
         tuple: User inputs including initial wealth, income, expenses, portfolio distribution, and more.
     """
     with st.sidebar:
+        st.header("User Inputs")
+
+        # Create tabs for each section
+        tab1, tab2, tab3 = st.tabs(
+            ["Financial Details", "Portfolio Distribution", "Life Expectancy"]
+        )
+
         # Financial Details Section
-        with st.sidebar.expander("Financial Details Inputs", expanded=False):
-            col1, col2 = st.columns(2)  # Create columns inside the expander
+        with tab1:
+            col1, col2 = st.columns(2)  # Create columns inside the tab
             with col1:
                 initial_wealth = st.number_input(
                     "Net Worth [$]",
@@ -53,15 +60,14 @@ def user_inputs():
                 )
 
         # Portfolio Distribution Section
-        with st.expander("Portfolio Distribution Inputs", expanded=False):
-            # Portfolio Distribution with a Pie Chart
+        with tab2:
             stock_bond_split = st.slider(
                 "Stock / Bond / Cash Split [%]",
                 min_value=0,
                 max_value=100,
                 value=(33, 67),
                 help="Slide to adjust the percentage of your portfolio allocated to stocks and bonds.",
-            )  # JavaScript for better sliders
+            )
             stock_percent = stock_bond_split[0]
             bond_percent = stock_bond_split[1] - stock_bond_split[0]
             cash_percent = 100 - stock_bond_split[1]
@@ -70,7 +76,7 @@ def user_inputs():
             )
 
         # Personal Information Section
-        with st.expander("Life Expectancy Inputs", expanded=False):
+        with tab3:
             col1, col2 = st.columns(2)
             with col1:
                 current_age = st.number_input(
