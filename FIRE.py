@@ -19,7 +19,7 @@ def user_inputs():
     """
     with st.sidebar:
         # Financial Details Section
-        with st.sidebar.expander("Financial Details Inputs", expanded=True):
+        with st.sidebar.expander("Financial Details Inputs", expanded=False):
             col1, col2 = st.columns(2)  # Create columns inside the expander
             with col1:
                 initial_wealth = st.number_input(
@@ -53,7 +53,7 @@ def user_inputs():
                 )
 
         # Portfolio Distribution Section
-        with st.expander("Portfolio Distribution Inputs", expanded=True):
+        with st.expander("Portfolio Distribution Inputs", expanded=False):
             # Portfolio Distribution with a Pie Chart
             stock_bond_split = st.slider(
                 "Stock / Bond / Cash Split [%]",
@@ -70,7 +70,7 @@ def user_inputs():
             )
 
         # Personal Information Section
-        with st.expander("Life Expectancy Inputs", expanded=True):
+        with st.expander("Life Expectancy Inputs", expanded=False):
             col1, col2 = st.columns(2)
             with col1:
                 current_age = st.number_input(
