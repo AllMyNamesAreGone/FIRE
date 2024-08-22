@@ -1,6 +1,4 @@
 import time
-import numpy as np
-import pandas as pd
 import streamlit as st
 
 _LOREM_IPSUM = """
@@ -25,4 +23,6 @@ def stream_data():
     for word in _LOREM_IPSUM.split(" "):
         yield word + " "
         time.sleep(0.02)
+
+
 st.write_stream(stream_data)
