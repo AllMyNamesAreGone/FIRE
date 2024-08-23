@@ -5,6 +5,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 
+# ======================
+# Page Configuration
+# ======================
+st.set_page_config(
+    layout="wide",  # Set the page layout to wide mode
+    initial_sidebar_state="collapsed",  # Hide the sidebar by default
+    page_title="Stock Growth Forecaster",
+    page_icon="📈",
+)
+
 
 # ======================
 # User Input Functions
@@ -17,18 +27,11 @@ def user_inputs():
     Returns:
         tuple: User inputs including initial wealth, income, expenses, portfolio distribution, and more.
     """
-    with st.sidebar:
-        st.header("User Inputs")
-
-        # Create tabs for each section
-        tab1, tab2, tab3 = st.tabs(
-            ["Financial Details", "Portfolio Distribution", "Life Expectancy"]
-        )
-
-        # Financial Details Section
-        with tab1:
-            col1, col2 = st.columns(2)  # Create columns inside the tab
-            with col1:
+    with st.expander("User Inputs", expanded=True):
+        col1, col2, col3 = st.columns(3)  # Create columns inside the expander
+        with col1:
+            subcol1, subcol2 = st.columns(2)
+            with subcol1:
                 initial_wealth = st.number_input(
                     "Net Worth [$]",
                     min_value=0,
@@ -43,7 +46,7 @@ def user_inputs():
                     step=1000,
                     help="Enter your current superannuation balance.",
                 )
-            with col2:
+            with subcol2:
                 annual_income = st.number_input(
                     "Income [$ p.a]",
                     min_value=0,
@@ -59,8 +62,7 @@ def user_inputs():
                     help="Enter your annual living expenses.",
                 )
 
-        # Portfolio Distribution Section
-        with tab2:
+        with col2:
             stock_bond_split = st.slider(
                 "Stock / Bond / Cash Split [%]",
                 min_value=0,
@@ -75,23 +77,19 @@ def user_inputs():
                 f"**Stocks:** {stock_percent}% | **Bonds:** {bond_percent}% | **Cash:** {cash_percent}%"
             )
 
-        # Personal Information Section
-        with tab3:
-            col1, col2 = st.columns(2)
-            with col1:
-                current_age = st.number_input(
-                    "Age [years]",
-                    min_value=0,
-                    value=25,
-                    step=1,
-                    help="Enter your current age.",
-                )
-            with col2:
-                sex = st.radio(
-                    "Sex",
-                    ["Male", "Female"],
-                    help="Used in Probability of Sufficiency plot to determine probability of mortality.",
-                )
+        with col3:
+            current_age = st.number_input(
+                "Age [years]",
+                min_value=0,
+                value=25,
+                step=1,
+                help="Enter your current age.",
+            )
+            sex = st.radio(
+                "Sex",
+                ["Male", "Female"],
+                help="Used in Probability of Sufficiency plot to determine probability of mortality.",
+            )
 
     return (
         initial_wealth,
