@@ -5,15 +5,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 
+
 # ======================
 # Page Configuration
 # ======================
-st.set_page_config(
-    layout="wide",  # Set the page layout to wide mode
-    initial_sidebar_state="collapsed",  # Hide the sidebar by default
-    page_title="Stock Growth Forecaster",
-    page_icon="📈",
-)
+def page_config():
+    st.set_page_config(
+        layout="wide",  # Set the page layout to wide mode
+        initial_sidebar_state="collapsed",  # Hide the sidebar by default
+        page_title="Financial Independence Retire Early Stochastic Forecaster",
+        page_icon="🔥",
+    )
 
 
 # ======================
@@ -109,6 +111,7 @@ def user_inputs():
 # ============================
 def identify_optimal_retirement(
     initial_wealth,
+    initial_superannuation,
     annual_income,
     annual_expenses,
     stock_percent,
@@ -121,6 +124,7 @@ def identify_optimal_retirement(
 
     Args:
         initial_wealth (float): The initial net worth of the user.
+        initial_superannuation (float): The initial superannuation balance.
         annual_income (float): The user's annual income.
         annual_expenses (float): The user's annual expenses.
         stock_percent (float): The percentage of the portfolio allocated to stocks.
@@ -132,6 +136,7 @@ def identify_optimal_retirement(
         int: The optimal retirement age.
     """
     wealth = initial_wealth
+    superannuation = initial_superannuation
     optimal_retirement_age = None
 
     for age in range(1, 100):
@@ -150,16 +155,34 @@ def identify_optimal_retirement(
         # Update wealth by compounding it and adding net income (adjusted_income - adjusted_expenses)
         wealth = wealth * total_return + (adjusted_income - adjusted_expenses)
 
-        # Check if wealth will last until 60 if retired now
+        # Superannuation grows without withdrawals until age 60
+        if age < 60:
+            superannuation = superannuation * total_return + adjusted_income * 0.11
+        else:
+            # After age 60, superannuation can cover expenses if wealth runs out
+            superannuation = superannuation * total_return - adjusted_expenses
+
+        # Check if both wealth and superannuation will remain positive until 100 if retired now
         temp_wealth = wealth
-        for future_age in range(age, 60):
+        temp_superannuation = superannuation
+        for future_age in range(age, 100):
             temp_expenses = annual_expenses * (1 + inflation_rate) ** future_age
             temp_wealth = temp_wealth * total_return - temp_expenses
-            if temp_wealth <= 0:
+
+            # After age 60, allow superannuation to cover expenses if wealth runs out
+            if future_age >= 60 and temp_wealth <= 0:
+                temp_superannuation = temp_superannuation * total_return - temp_expenses
+
+            # If both wealth and superannuation run out, break early
+            if temp_wealth <= 0 and temp_superannuation <= 0:
                 break
 
-        # If temp_wealth remains positive until age 60, set this as retirement age
-        if temp_wealth > 0 and optimal_retirement_age is None:
+        # If both wealth and superannuation remain positive until age 100, set this as retirement age
+        if (
+            temp_wealth > 0
+            and temp_superannuation > 0
+            and optimal_retirement_age is None
+        ):
             optimal_retirement_age = age
 
     return optimal_retirement_age
@@ -316,6 +339,8 @@ def main():
     Main function to control the app flow. It collects user inputs, identifies the optimal retirement age,
     and generates the expected forecast based on the user's inputs.
     """
+    page_config()
+
     (
         initial_wealth,
         annual_income,
@@ -331,6 +356,7 @@ def main():
     # Calculate the optimal retirement age before running the forecast
     optimal_retirement_age = identify_optimal_retirement(
         initial_wealth,
+        initial_superannuation,
         annual_income,
         annual_expenses,
         stock_percent,
@@ -339,7 +365,7 @@ def main():
         inflation_rate,
     )
 
-    st.title("Stock Growth Forecaster")
+    st.title("Financial Independence Retire Early Stochastic Forecaster")
     option = st.selectbox(
         "Select Option",
         ["Expected Wealth and Superannuation", "Probability of Sufficiency"],
