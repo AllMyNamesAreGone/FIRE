@@ -47,7 +47,7 @@ def user_inputs():
                 annual_income = st.number_input(
                     "Income [$ p.a]",
                     min_value=0,
-                    value=135000,
+                    value=120000,
                     step=1000,
                     help="Enter your annual income after tax.",
                 )
