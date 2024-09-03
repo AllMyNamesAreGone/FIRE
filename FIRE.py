@@ -1,8 +1,9 @@
 # Standard library imports
 
 # Third-party imports
+import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import streamlit as st
 
 
@@ -22,26 +23,20 @@ def page_config():
 # User Input Functions
 # ======================
 def user_inputs():
-    """
-    Collects user inputs from the Streamlit sidebar, including financial details, portfolio distribution,
-    and inflation rate. Returns the user inputs as a tuple.
-
-    Returns:
-        tuple: User inputs including initial wealth, income, expenses, portfolio distribution, and more.
-    """
     with st.expander("User Inputs", expanded=True):
         col1, col2, col3 = st.columns(3)  # Create columns inside the expander
+
         with col1:
             subcol1, subcol2 = st.columns(2)
             with subcol1:
-                initial_wealth = st.number_input(
+                current_wealth = st.number_input(
                     "Net Worth [$]",
                     min_value=0,
                     value=50000,
                     step=1000,
                     help="Enter your current total net worth.",
                 )
-                initial_superannuation = st.number_input(
+                current_superannuation = st.number_input(
                     "Super [$]",
                     min_value=0,
                     value=10000,
@@ -72,300 +67,297 @@ def user_inputs():
                 value=(33, 67),
                 help="Slide to adjust the percentage of your portfolio allocated to stocks and bonds.",
             )
-            stock_percent = stock_bond_split[0]
-            bond_percent = stock_bond_split[1] - stock_bond_split[0]
-            cash_percent = 100 - stock_bond_split[1]
+            stock_percent = stock_bond_split[0] / 100
+            bond_percent = (stock_bond_split[1] - stock_bond_split[0]) / 100
+            cash_percent = (100 - stock_bond_split[1]) / 100
             st.write(
-                f"**Stocks:** {stock_percent}% | **Bonds:** {bond_percent}% | **Cash:** {cash_percent}%"
+                "**Stocks:**",
+                stock_bond_split[0],
+                "% | **Bonds:**",
+                stock_bond_split[1] - stock_bond_split[0],
+                "% | **Cash:**",
+                100 - stock_bond_split[1],
+                "%",
+            )
+            real_annual_return = (
+                stock_return * stock_percent
+                + bond_return * bond_percent
+                + cash_return * cash_percent
+                - 0.02  # inflation rate
             )
 
         with col3:
-            current_age = st.number_input(
+            age_now = st.number_input(
                 "Age [years]",
                 min_value=0,
                 value=25,
                 step=1,
                 help="Enter your current age.",
             )
-            sex = st.radio(
-                "Sex",
-                ["Male", "Female"],
-                help="Used in Probability of Sufficiency plot to determine probability of mortality.",
-            )
+            # sex = st.radio(
+            #     "Sex",
+            #     ["Male", "Female"],
+            #     help="Used in Probability of Sufficiency plot to determine probability of mortality.",
+            # )
 
     return (
-        initial_wealth,
+        current_wealth,
         annual_income,
-        initial_superannuation,
+        current_superannuation,
         annual_expenses,
-        stock_percent / 100,
-        bond_percent / 100,
-        cash_percent / 100,
-        current_age,
-        sex,
+        real_annual_return,
+        age_now,
+        # sex,
+        stock_percent,
+        bond_percent,
+        cash_percent,
     )
 
 
 # ============================
-# Retirement Calculation
+# Optimisation Function
 # ============================
-def identify_optimal_retirement(
-    initial_wealth,
-    initial_superannuation,
+def optimise_retirement_age_and_super_contribution(
+    current_wealth,
     annual_income,
+    current_superannuation,
     annual_expenses,
-    stock_percent,
-    bond_percent,
-    cash_percent,
-    inflation_rate,
+    real_annual_return,
+    age_now,
 ):
-    """
-    Identifies the optimal retirement age by simulating wealth accumulation and withdrawal until age 60.
-
-    Args:
-        initial_wealth (float): The initial net worth of the user.
-        initial_superannuation (float): The initial superannuation balance.
-        annual_income (float): The user's annual income.
-        annual_expenses (float): The user's annual expenses.
-        stock_percent (float): The percentage of the portfolio allocated to stocks.
-        bond_percent (float): The percentage of the portfolio allocated to bonds.
-        cash_percent (float): The percentage of the portfolio allocated to cash.
-        inflation_rate (float): The annual inflation rate.
-
-    Returns:
-        int: The optimal retirement age.
-    """
-    wealth = initial_wealth
-    superannuation = initial_superannuation
     optimal_retirement_age = None
+    optimal_contribution = None
+    optimal_wealth_history = None
+    optimal_super_history = None
 
-    for age in range(1, 100):
-        # Inflate income and expenses over time
-        adjusted_income = annual_income * (1 + inflation_rate) ** age
-        adjusted_expenses = annual_expenses * (1 + inflation_rate) ** age
+    # Iterate over possible retirement ages
+    for retirement_age in range(age_now, 61):  # Include age 60
+        for super_contribution_rate in range(11, 81):  # Range from 11% to 80%
+            super_contribution_rate /= 100  # Convert to decimal
 
-        # Calculate the total return for this year
-        total_return = (
-            1
-            + stock_return * stock_percent
-            + bond_return * bond_percent
-            + cash_return * cash_percent
+            wealth = current_wealth
+            superannuation = current_superannuation
+            wealth_history = []
+            super_history = []
+
+            # Simulate from current age to age 120
+            for age in range(age_now, 121):
+                if age < retirement_age:
+                    wealth = (
+                        wealth * (1 + real_annual_return)
+                        + annual_income * (1 - super_contribution_rate)
+                        - annual_expenses
+                    )
+                    superannuation = (
+                        superannuation * (1 + real_annual_return)
+                        + annual_income * super_contribution_rate
+                    )
+                elif age < 60:
+                    wealth = wealth * (1 + real_annual_return) - annual_expenses
+                    superannuation = superannuation * (1 + real_annual_return)
+                else:
+                    superannuation = (
+                        superannuation * (1 + real_annual_return) - annual_expenses
+                    )
+
+                wealth_history.append(wealth)
+                super_history.append(superannuation)
+
+            # Check if both wealth and superannuation are non-negative until age 120
+            if wealth >= 0 and superannuation >= 0:
+                optimal_retirement_age = retirement_age
+                optimal_contribution = super_contribution_rate
+                optimal_wealth_history = wealth_history
+                optimal_super_history = super_history
+                break  # Found a valid solution for this retirement age; no need to check further SCRs
+
+        if optimal_retirement_age is not None:
+            break  # Found a valid solution; break outer loop
+
+    # Return the optimal results and DataFrame for further use
+    df_history = pd.DataFrame(
+        {
+            "Age": range(age_now, 121),
+            "Wealth": optimal_wealth_history,
+            "Superannuation": optimal_super_history,
+        }
+    )
+
+    return optimal_retirement_age, optimal_contribution, df_history
+
+
+def simulate_probabilities(age_now, df_history):
+    np.random.seed(42)  # For reproducibility
+    forecast_years = 120 - age_now
+    ages = range(age_now, 121)
+
+    # Assuming wealth forecast from df_history is accurate to some degree, use the last known forecast
+    wealth_forecast = df_history[df_history["Age"] >= age_now]["Wealth"].values
+    wealth_forecast = np.concatenate(
+        [wealth_forecast, np.zeros(forecast_years + 1 - len(wealth_forecast))]
+    )
+
+    # Simulate probabilities of different outcomes for each age
+    # Use an exponential model for mortality increasing with age
+    base_mortality_rate = 0.0001  # Start with a low base mortality rate
+    prob_dead = np.clip(
+        1 - np.exp(-base_mortality_rate * (np.arange(forecast_years + 1) ** 2)), 0, 1
+    )
+
+    # Probability of going broke if wealth is below a certain threshold (e.g., 0)
+    prob_broke = np.where(
+        wealth_forecast <= 0, np.linspace(0.1, 0.9, len(wealth_forecast)), 0
+    )
+
+    # Normalize probabilities to ensure they sum to 1 or less
+    remaining_prob = 1 - prob_broke - prob_dead
+    prob_less_start = np.clip(
+        remaining_prob * np.random.uniform(0.3, 0.4, forecast_years + 1),
+        0,
+        remaining_prob,
+    )
+    remaining_prob -= prob_less_start
+    prob_greater_start = np.clip(
+        remaining_prob * np.random.uniform(0.3, 0.4, forecast_years + 1),
+        0,
+        remaining_prob,
+    )
+    remaining_prob -= prob_greater_start
+    prob_more_than_double = np.clip(remaining_prob, 0, 1)
+
+    # Convert probabilities to percentages
+    data = {
+        "Age": ages,
+        "Bankruptcy": prob_broke * 100,
+        "Dead": prob_dead * 100,
+        "Bal < start": prob_less_start * 100,
+        "Bal > start": prob_greater_start * 100,
+        "Bal > 2x start": prob_more_than_double * 100,
+    }
+
+    df_probabilities = pd.DataFrame(data)
+
+    return df_probabilities
+
+
+def plot_probabilities(df_probabilities):
+    fig = go.Figure()
+
+    # Stacked area chart
+    fig.add_trace(
+        go.Scatter(
+            x=df_probabilities["Age"],
+            y=df_probabilities["Bankruptcy"],
+            mode="lines",
+            name="Bankruptcy",
+            stackgroup="one",  # define stack group
+            line=dict(width=0.5, color="red"),
+            fillcolor="rgba(255, 0, 0, 0.5)",
         )
+    )
 
-        # Update wealth by compounding it and adding net income (adjusted_income - adjusted_expenses)
-        wealth = wealth * total_return + (adjusted_income - adjusted_expenses)
+    fig.add_trace(
+        go.Scatter(
+            x=df_probabilities["Age"],
+            y=df_probabilities["Dead"],
+            mode="lines",
+            name="Dead",
+            stackgroup="one",  # define stack group
+            line=dict(width=0.5, color="grey"),
+            fillcolor="rgba(100, 100, 100, 0.5)",
+        )
+    )
 
-        # Superannuation grows without withdrawals until age 60
-        if age < 60:
-            superannuation = superannuation * total_return + adjusted_income * 0.11
-        else:
-            # After age 60, superannuation can cover expenses if wealth runs out
-            superannuation = superannuation * total_return - adjusted_expenses
+    fig.add_trace(
+        go.Scatter(
+            x=df_probabilities["Age"],
+            y=df_probabilities["Bal < start"],
+            mode="lines",
+            name="Bal < start",
+            stackgroup="one",
+            line=dict(width=0.5, color="lightgreen"),
+            fillcolor="rgba(144, 238, 144, 0.5)",
+        )
+    )
 
-        # Check if both wealth and superannuation will remain positive until 100 if retired now
-        temp_wealth = wealth
-        temp_superannuation = superannuation
-        for future_age in range(age, 100):
-            temp_expenses = annual_expenses * (1 + inflation_rate) ** future_age
-            temp_wealth = temp_wealth * total_return - temp_expenses
+    fig.add_trace(
+        go.Scatter(
+            x=df_probabilities["Age"],
+            y=df_probabilities["Bal > start"],
+            mode="lines",
+            name="Bal > start",
+            stackgroup="one",
+            line=dict(width=0.5, color="green"),
+            fillcolor="rgba(0, 128, 0, 0.5)",
+        )
+    )
 
-            # After age 60, allow superannuation to cover expenses if wealth runs out
-            if future_age >= 60 and temp_wealth <= 0:
-                temp_superannuation = temp_superannuation * total_return - temp_expenses
+    fig.add_trace(
+        go.Scatter(
+            x=df_probabilities["Age"],
+            y=df_probabilities["Bal > 2x start"],
+            mode="lines",
+            name="Bal > 2x start",
+            stackgroup="one",
+            line=dict(width=0.5, color="darkgreen"),
+            fillcolor="rgba(0, 100, 0, 0.5)",
+        )
+    )
 
-            # If both wealth and superannuation run out, break early
-            if temp_wealth <= 0 and temp_superannuation <= 0:
-                break
+    fig.update_layout(
+        title="Probability of Sufficiency Over Time",
+        xaxis_title="Age",
+        yaxis_title="Frequency (%)",
+        yaxis=dict(type="linear", range=[0, 100], ticksuffix="%"),
+        showlegend=True,
+    )
 
-        # If both wealth and superannuation remain positive until age 100, set this as retirement age
-        if (
-            temp_wealth > 0
-            and temp_superannuation > 0
-            and optimal_retirement_age is None
-        ):
-            optimal_retirement_age = age
-
-    return optimal_retirement_age
+    st.plotly_chart(fig)
 
 
 # ============================
-# Forecasting
-# ============================
-def expected_forecast(
-    initial_wealth,
-    initial_superannuation,
-    annual_income,
-    annual_expenses,
-    stock_percent,
-    bond_percent,
-    cash_percent,
-    inflation_rate,
-    optimal_retirement_age,
-):
-    """
-    Generates and plots the expected forecast of wealth and superannuation growth over time.
-
-    Args:
-        initial_wealth (float): The initial net worth of the user.
-        initial_superannuation (float): The initial superannuation balance.
-        annual_income (float): The user's annual income.
-        annual_expenses (float): The user's annual expenses.
-        stock_percent (float): The percentage of the portfolio allocated to stocks.
-        bond_percent (float): The percentage of the portfolio allocated to bonds.
-        cash_percent (float): The percentage of the portfolio allocated to cash.
-        inflation_rate (float): The annual inflation rate.
-        optimal_retirement_age (int): The calculated optimal retirement age.
-    """
-    wealth = initial_wealth
-    superannuation = initial_superannuation
-
-    wealth_history = []
-    superannuation_history = []
-    wealth_upper = []
-    wealth_lower = []
-    superannuation_upper = []
-    superannuation_lower = []
-
-    for year in range(1, 100):
-        # Adjust income to 0 after the optimal retirement age
-        if year >= optimal_retirement_age:
-            annual_income = 0
-
-        # Inflate expenses over time
-        adjusted_expenses = annual_expenses * (1 + inflation_rate) ** year
-
-        # Calculate the total return for this year
-        total_return = (
-            1
-            + stock_return * stock_percent
-            + bond_return * bond_percent
-            + cash_return * cash_percent
-        )
-        total_error = (
-            1
-            + stock_error * stock_percent
-            + bond_error * bond_percent
-            + cash_error * cash_percent
-        )
-
-        # Update wealth by compounding it and adding net income (annual_income - adjusted_expenses)
-        wealth = wealth * total_return + (annual_income - adjusted_expenses)
-        if wealth < 0:
-            adjusted_expenses = -wealth
-            wealth = 0
-
-        wealth_history.append([year, wealth])
-
-        # Calculate upper and lower bounds for wealth
-        wealth_upper_bound = wealth * total_error  # +1 standard deviation
-        wealth_lower_bound = wealth / total_error  # -1 standard deviation
-        wealth_upper.append([year, wealth_upper_bound])
-        wealth_lower.append([year, wealth_lower_bound])
-
-        # Update superannuation by compounding it and adding 11% of the income
-        superannuation = superannuation * total_return + annual_income * 0.11
-        if wealth == 0:
-            superannuation -= adjusted_expenses
-
-        superannuation_history.append([year, superannuation])
-
-        # Calculate upper and lower bounds for superannuation
-        superannuation_upper_bound = (
-            superannuation * total_error
-        )  # +1 standard deviation
-        superannuation_lower_bound = (
-            superannuation / total_error
-        )  # -1 standard deviation
-        superannuation_upper.append([year, superannuation_upper_bound])
-        superannuation_lower.append([year, superannuation_lower_bound])
-
-    # Convert to DataFrames
-    df_wealth = pd.DataFrame(wealth_history, columns=["Years", "Wealth"])
-    df_superannuation = pd.DataFrame(
-        superannuation_history, columns=["Years", "Superannuation"]
-    )
-    df_wealth_upper = pd.DataFrame(wealth_upper, columns=["Years", "Wealth Upper"])
-    df_wealth_lower = pd.DataFrame(wealth_lower, columns=["Years", "Wealth Lower"])
-    df_superannuation_upper = pd.DataFrame(
-        superannuation_upper, columns=["Years", "Super Upper"]
-    )
-    df_superannuation_lower = pd.DataFrame(
-        superannuation_lower, columns=["Years", "Super Lower"]
-    )
-
-    # Plot Wealth and Superannuation on the same chart
-    plt.figure(figsize=(10, 6))
-    plt.plot(df_wealth["Years"], df_wealth["Wealth"], label="Wealth")
-    plt.fill_between(
-        df_wealth["Years"],
-        df_wealth_lower["Wealth Lower"],
-        df_wealth_upper["Wealth Upper"],
-        color="blue",
-        alpha=0.2,
-    )
-    plt.plot(
-        df_superannuation["Years"],
-        df_superannuation["Superannuation"],
-        label="Superannuation",
-        color="orange",
-    )
-    plt.fill_between(
-        df_superannuation["Years"],
-        df_superannuation_lower["Super Lower"],
-        df_superannuation_upper["Super Upper"],
-        color="orange",
-        alpha=0.2,
-    )
-
-    # Improve y-axis labels and formatting
-    plt.xlabel("Years")
-    plt.ylabel("Wealth & Superannuation ($)")
-    plt.title("Wealth and Superannuation Forecast with Error Bands")
-    plt.legend()
-
-    # Format y-axis as currency
-    plt.gca().get_yaxis().set_major_formatter(
-        plt.FuncFormatter(lambda x, loc: "${:,.0f}".format(x))
-    )
-
-    st.pyplot(plt)
-
-
-# ============================
-# MAIN
+# Main Function
 # ============================
 def main():
-    """
-    Main function to control the app flow. It collects user inputs, identifies the optimal retirement age,
-    and generates the expected forecast based on the user's inputs.
-    """
     page_config()
-
+    st.title("Financial Independence Retire Early Stochastic Forecaster")
     (
-        initial_wealth,
+        current_wealth,
         annual_income,
-        initial_superannuation,
+        current_superannuation,
         annual_expenses,
+        real_annual_return,
+        age_now,
+        # sex,
         stock_percent,
         bond_percent,
         cash_percent,
-        current_age,
-        sex,
     ) = user_inputs()
 
-    # Calculate the optimal retirement age before running the forecast
-    optimal_retirement_age = identify_optimal_retirement(
-        initial_wealth,
-        initial_superannuation,
-        annual_income,
-        annual_expenses,
-        stock_percent,
-        bond_percent,
-        cash_percent,
-        inflation_rate,
+    optimal_age, optimal_contribution, df_history = (
+        optimise_retirement_age_and_super_contribution(
+            current_wealth,
+            annual_income,
+            current_superannuation,
+            annual_expenses,
+            real_annual_return,
+            age_now,
+        )
     )
+    # Display the final results in a clean, formatted way
+    st.markdown("### 🎯 **Optimization Results**")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.success(f"**Optimal Retirement Age:** {optimal_age}")
+    with col2:
+        st.success(
+            f"**Optimal Superannuation Contribution Rate:** {optimal_contribution:.0%}"
+        )
+    with col3:
+        st.success(
+            f"**Max Super Balance Required:** ${df_history['Superannuation'].max():,.0f}"
+        )
 
-    st.title("Financial Independence Retire Early Stochastic Forecaster")
     option = st.selectbox(
         "Select Option",
         ["Expected Wealth and Superannuation", "Probability of Sufficiency"],
@@ -373,19 +365,119 @@ def main():
     )
 
     if option == "Expected Wealth and Superannuation":
-        expected_forecast(
-            initial_wealth,
-            initial_superannuation,
-            annual_income,
-            annual_expenses,
-            stock_percent,
-            bond_percent,
-            cash_percent,
-            inflation_rate,
-            optimal_retirement_age,
-        )
-        if optimal_retirement_age:
-            st.write(f"The optimal retirement age is: {optimal_retirement_age} years")
+        if not df_history.empty:
+            # Assuming stock_percent, bond_percent, and cash_percent are the percentage allocations
+            stock_allocation = stock_percent
+            bond_allocation = bond_percent
+            cash_allocation = cash_percent
+
+            # Define an exponential scaling factor for the standard deviation
+            age_factor = np.exp(
+                np.linspace(0, 1.5, len(df_history))
+            )  # Exponential increase to create a "blooming" effect
+
+            # Compute the portfolio variance for each year
+            portfolio_variance = (
+                (stock_error * 3 * stock_allocation * df_history["Wealth"]) ** 2
+                + (bond_error * 3 * bond_allocation * df_history["Wealth"]) ** 2
+                + (cash_error * 3 * cash_allocation * df_history["Wealth"]) ** 2
+            )
+
+            # The total portfolio standard deviation that increases exponentially with age
+            total_std_dev = (portfolio_variance**0.5) * age_factor
+
+            upper_bound_wealth = df_history["Wealth"] + total_std_dev
+            lower_bound_wealth = df_history["Wealth"] - total_std_dev
+
+            # Repeat for superannuation
+            upper_bound_super = df_history["Superannuation"] + total_std_dev
+            lower_bound_super = df_history["Superannuation"] - total_std_dev
+
+            # Plot using Plotly
+            fig = go.Figure()
+
+            # Plot wealth
+            fig.add_trace(
+                go.Scatter(
+                    x=df_history["Age"],
+                    y=df_history["Wealth"],
+                    mode="lines",
+                    name="Wealth",
+                    line=dict(color="blue", width=2),  # Increase line thickness
+                )
+            )
+
+            # Add wealth bounds with more transparency
+            fig.add_trace(
+                go.Scatter(
+                    x=df_history["Age"],
+                    y=upper_bound_wealth,
+                    mode="lines",
+                    line=dict(width=0),
+                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=df_history["Age"],
+                    y=lower_bound_wealth,
+                    mode="lines",
+                    fill="tonexty",
+                    fillcolor="rgba(0, 0, 255, 0.2)",  # Increase transparency
+                    line=dict(width=0),
+                    showlegend=False,
+                )
+            )
+
+            # Plot superannuation
+            fig.add_trace(
+                go.Scatter(
+                    x=df_history["Age"],
+                    y=df_history["Superannuation"],
+                    mode="lines",
+                    name="Superannuation",
+                    line=dict(color="green", width=2),  # Increase line thickness
+                )
+            )
+
+            # Add superannuation bounds with more transparency
+            fig.add_trace(
+                go.Scatter(
+                    x=df_history["Age"],
+                    y=upper_bound_super,
+                    mode="lines",
+                    line=dict(width=0),
+                    showlegend=False,
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=df_history["Age"],
+                    y=lower_bound_super,
+                    mode="lines",
+                    fill="tonexty",
+                    fillcolor="rgba(0, 255, 0, 0.2)",  # Increase transparency
+                    line=dict(width=0),
+                    showlegend=False,
+                )
+            )
+
+            fig.update_layout(
+                title="Expected Wealth and Superannuation with Rapidly Increasing Uncertainty Bounds",
+                xaxis_title="Age",
+                yaxis_title="Value [$]",
+                legend=dict(x=0.01, y=0.99),
+                xaxis=dict(showgrid=True),  # Add gridlines
+                yaxis=dict(showgrid=True),  # Add gridlines
+            )
+
+            st.plotly_chart(fig)
+        else:
+            st.error("No valid data to plot. Check calculations or inputs.")
+
+    elif option == "Probability of Sufficiency":
+        df_probabilities = simulate_probabilities(age_now, df_history)
+        plot_probabilities(df_probabilities)
 
 
 if __name__ == "__main__":
@@ -396,5 +488,4 @@ if __name__ == "__main__":
     bond_error = 0.06
     cash_return = 0.03
     cash_error = 0.02
-    inflation_rate = 0.02
     main()

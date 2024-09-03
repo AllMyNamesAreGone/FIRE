@@ -1,0 +1,303 @@
+# Standard library imports
+
+# Third-party imports
+import pandas as pd
+import streamlit as st
+
+
+# ======================
+# Page Configuration
+# ======================
+def page_config():
+    """
+    Configure the Streamlit app page settings.
+    """
+    st.set_page_config(
+        layout="wide",  # Set the page layout to wide mode
+        initial_sidebar_state="collapsed",  # Hide the sidebar by default
+        page_title="Financial Independence Retire Early Stochastic Forecaster",
+        page_icon="🔥",
+    )
+
+
+# ======================
+# User Input Functions
+# ======================
+def user_inputs():
+    """
+    Collects user inputs from the Streamlit sidebar, including financial details, portfolio distribution,
+    and inflation rate. Returns the user inputs as a tuple.
+
+    Returns:
+        tuple: User inputs including initial wealth, income, expenses, portfolio distribution, and more.
+    """
+    with st.expander("User Inputs", expanded=True):
+        col1, col2, col3 = st.columns(3)  # Create columns inside the expander
+
+        with col1:
+            subcol1, subcol2 = st.columns(2)
+            with subcol1:
+                current_wealth = st.number_input(
+                    "Net Worth [$]",
+                    min_value=0,
+                    value=50000,
+                    step=1000,
+                    help="Enter your current total net worth.",
+                )
+                current_superannuation = st.number_input(
+                    "Super [$]",
+                    min_value=0,
+                    value=10000,
+                    step=1000,
+                    help="Enter your current superannuation balance.",
+                )
+            with subcol2:
+                annual_income = st.number_input(
+                    "Income [$ p.a]",
+                    min_value=0,
+                    value=135000,
+                    step=1000,
+                    help="Enter your annual income after tax.",
+                )
+                annual_expenses = st.number_input(
+                    "Expenses [$ p.a]",
+                    min_value=0,
+                    value=50000,
+                    step=1000,
+                    help="Enter your annual living expenses.",
+                )
+
+        with col2:
+            stock_bond_split = st.slider(
+                "Stock / Bond / Cash Split [%]",
+                min_value=0,
+                max_value=100,
+                value=(33, 67),
+                help="Slide to adjust the percentage of your portfolio allocated to stocks and bonds.",
+            )
+            stock_percent = stock_bond_split[0]
+            bond_percent = stock_bond_split[1] - stock_bond_split[0]
+            cash_percent = 100 - stock_bond_split[1]
+            st.write(
+                f"**Stocks:** {stock_percent}% | **Bonds:** {bond_percent}% | **Cash:** {cash_percent}%"
+            )
+            real_annual_return = (
+                stock_return / 100 * stock_percent
+                + bond_return / 100 * bond_percent
+                + cash_return / 100 * cash_percent
+                - 0.02  # inflation rate
+            )
+
+        with col3:
+            age_now = st.number_input(
+                "Age [years]",
+                min_value=0,
+                value=25,
+                step=1,
+                help="Enter your current age.",
+            )
+            sex = st.radio(
+                "Sex",
+                ["Male", "Female"],
+                help="Used in Probability of Sufficiency plot to determine probability of mortality.",
+            )
+
+    return (
+        current_wealth,
+        annual_income,
+        current_superannuation,
+        annual_expenses,
+        real_annual_return,
+        age_now,
+        sex,
+    )
+
+
+# ============================
+# Required Superannuation Calculation
+# ============================
+def calculate_required_superannuation(annual_expenses, real_annual_return):
+    """
+    Calculate the required superannuation balance at age 60 to ensure it lasts until age 120.
+
+    Args:
+        annual_expenses (float): The annual expenses expected at the retirement age.
+        current_superannuation (float): The initial superannuation balance.
+        real_annual_return (float): The expected annual return rate of the superannuation investments.
+        age_now (int): The current age of the individual.
+
+    Returns:
+        float: The required superannuation balance at age 60.
+    """
+    total_required_super_balance = 0
+    for age in range(60, 121):
+        # Calculate the present value of future expenses at the retirement age
+        total_required_super_balance += annual_expenses / (
+            (1 + real_annual_return) ** (age - 60)
+        )
+    return total_required_super_balance
+
+
+# ============================
+# Optimisation Function
+# ============================
+def optimise_retirement_age_and_super_contribution(
+    current_wealth,
+    annual_income,
+    current_superannuation,
+    annual_expenses,
+    real_annual_return,
+    age_now,
+    total_required_super_balance,
+):
+    """
+    Optimise the retirement age and superannuation contribution rate to ensure that the user
+    can retire as early as possible while meeting the financial constraints.
+
+    Args:
+        current_wealth (float): The initial net worth of the user.
+        annual_income (float): The user's annual income.
+        current_superannuation (float): The initial superannuation balance.
+        annual_expenses (float): The user's annual expenses.
+        real_annual_return (float): The expected annual return rate of investments.
+        age_now (int): The current age of the user.
+
+    Returns:
+        tuple: Optimal retirement age, optimal superannuation contribution rate, DataFrame with wealth and superannuation history.
+    """
+    optimal_retirement_age = None
+    optimal_contribution = None
+    optimal_wealth_history = None
+    optimal_super_history = None
+
+    # Iterate over possible retirement ages
+    for retirement_age in range(age_now, 61):  # Include age 60
+        for super_contribution_rate in range(11, 81):  # Range from 11% to 80%
+            super_contribution_rate /= 100  # Convert to decimal
+
+            wealth = current_wealth
+            superannuation = current_superannuation
+            wealth_history = []
+            super_history = []
+
+            # Simulate from current age to age 120
+            for age in range(age_now, 121):
+                if age < retirement_age:
+                    wealth = (
+                        wealth * (1 + real_annual_return)
+                        + annual_income * (1 - super_contribution_rate)
+                        - annual_expenses
+                    )
+                    superannuation = (
+                        superannuation * (1 + real_annual_return)
+                        + annual_income * super_contribution_rate
+                    )
+                elif age < 60:
+                    wealth = wealth * (1 + real_annual_return) - annual_expenses
+                    superannuation = superannuation * (1 + real_annual_return)
+                else:
+                    wealth = wealth * (1 + real_annual_return)
+                    superannuation = (
+                        superannuation * (1 + real_annual_return) - annual_expenses
+                    )
+
+                wealth_history.append(wealth)
+                super_history.append(superannuation)
+
+            # Check if both wealth and superannuation are non-negative until age 120
+            if (
+                wealth_history[60] >= 0  # Wealth is non-negative at age 59
+                and super_history[60] >= total_required_super_balance
+            ):
+                optimal_retirement_age = retirement_age
+                optimal_contribution = super_contribution_rate
+                optimal_wealth_history = wealth_history
+                optimal_super_history = super_history
+                break  # Found a valid solution for this retirement age; no need to check further SCRs
+
+        if optimal_retirement_age is not None:
+            break  # Found a valid solution; break outer loop
+
+    # Return the optimal results and DataFrame for further use
+    df_history = pd.DataFrame(
+        {
+            "Age": range(age_now, 121),
+            "Wealth": optimal_wealth_history,
+            "Superannuation": optimal_super_history,
+        }
+    )
+
+    return optimal_retirement_age, optimal_contribution, df_history
+
+
+# ============================
+# Main Function
+# ============================
+def main():
+    """
+    Main function to control the app flow. It collects user inputs, identifies the optimal retirement age,
+    and generates the expected forecast based on the user's inputs.
+    """
+    page_config()
+
+    (
+        current_wealth,
+        annual_income,
+        current_superannuation,
+        annual_expenses,
+        real_annual_return,
+        age_now,
+        sex,
+    ) = user_inputs()
+
+    st.title("Financial Independence Retire Early Stochastic Forecaster")
+    option = st.selectbox(
+        "Select Option",
+        ["Expected Wealth and Superannuation", "Probability of Sufficiency"],
+        label_visibility="collapsed",
+    )
+
+    if option == "Expected Wealth and Superannuation":
+        total_required_super_balance = calculate_required_superannuation(
+            current_wealth, current_superannuation
+        )
+        optimal_age, optimal_contribution, df_history = (
+            optimise_retirement_age_and_super_contribution(
+                current_wealth,
+                annual_income,
+                current_superannuation,
+                annual_expenses,
+                real_annual_return,
+                age_now,
+                total_required_super_balance,
+            )
+        )
+
+        # Display the final results in a clean, formatted way
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.success(f"**Optimal Retirement Age:** {optimal_age}")
+        with col2:
+            st.success(
+                f"**Optimal Superannuation Contribution Rate:** {optimal_contribution:.0%}"
+            )
+        with col3:
+            st.success(
+                f"**Max Super Balance Required:** ${total_required_super_balance:,.0f}"
+            )
+
+        if not df_history.empty:
+            st.line_chart(df_history.set_index("Age"))
+        else:
+            st.error("No valid data to plot. Check calculations or inputs.")
+
+
+if __name__ == "__main__":
+    # Set return and error rates for stocks, bonds, and cash
+    stock_return = 0.07
+    stock_error = 0.17
+    bond_return = 0.04
+    bond_error = 0.06
+    cash_return = 0.03
+    cash_error = 0.02
+    main()
