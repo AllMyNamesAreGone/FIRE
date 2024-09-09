@@ -24,42 +24,42 @@ def page_config():
 # ======================
 def user_inputs():
     with st.expander("User Inputs", expanded=True):
-        col1, col2, col3 = st.columns(3)  # Create columns inside the expander
+        finances, split, age = st.columns(3)  # Create columns inside the expander
 
-        with col1:
-            subcol1, subcol2 = st.columns(2)
-            with subcol1:
+        with finances:
+            assets, cashflow = st.columns(2)
+            with assets:
                 current_wealth = st.number_input(
                     "Net Worth [$]",
                     min_value=0,
-                    value=50000,
+                    value=0,
                     step=1000,
-                    help="Enter your current total net worth.",
+                    help="Enter your current wealth outside of super.",
                 )
                 current_superannuation = st.number_input(
                     "Super [$]",
                     min_value=0,
-                    value=10000,
+                    value=0,
                     step=1000,
                     help="Enter your current superannuation balance.",
                 )
-            with subcol2:
-                annual_income = st.number_input(
-                    "Income [$ p.a]",
+            with cashflow:
+                income = st.number_input(
+                    "Annual Income [$]",
                     min_value=0,
-                    value=120000,
+                    value=75000,
                     step=1000,
                     help="Enter your annual income after tax.",
                 )
-                annual_expenses = st.number_input(
-                    "Expenses [$ p.a]",
+                expenses = st.number_input(
+                    "Annual Expenses [$]",
                     min_value=0,
                     value=50000,
                     step=1000,
                     help="Enter your annual living expenses.",
                 )
 
-        with col2:
+        with split:
             stock_bond_split = st.slider(
                 "Stock / Bond / Cash Split [%]",
                 min_value=0,
@@ -86,7 +86,7 @@ def user_inputs():
                 - 0.02  # inflation rate
             )
 
-        with col3:
+        with age:
             age_now = st.number_input(
                 "Age [years]",
                 min_value=0,
@@ -94,20 +94,20 @@ def user_inputs():
                 step=1,
                 help="Enter your current age.",
             )
-            # sex = st.radio(
-            #     "Sex",
-            #     ["Male", "Female"],
-            #     help="Used in Probability of Sufficiency plot to determine probability of mortality.",
-            # )
+            sex = st.radio(
+                "Sex",
+                ["Male", "Female"],
+                help="Used in Probability of Sufficiency plot to determine probability of mortality.",
+            )
 
     return (
         current_wealth,
-        annual_income,
+        income,
         current_superannuation,
-        annual_expenses,
+        expenses,
         real_annual_return,
         age_now,
-        # sex,
+        sex,
         stock_percent,
         bond_percent,
         cash_percent,
@@ -119,9 +119,9 @@ def user_inputs():
 # ============================
 def optimise_retirement_age_and_super_contribution(
     current_wealth,
-    annual_income,
+    income,
     current_superannuation,
-    annual_expenses,
+    expenses,
     real_annual_return,
     age_now,
 ):
@@ -132,39 +132,66 @@ def optimise_retirement_age_and_super_contribution(
 
     # Iterate over possible retirement ages
     for retirement_age in range(age_now, 61):  # Include age 60
-        for super_contribution_rate in range(11, 81):  # Range from 11% to 80%
-            super_contribution_rate /= 100  # Convert to decimal
-
+        # Iterate over super_contribution_rate from 11% to 80% in 1% steps
+        for super_contribution_rate in np.arange(0.11, 0.81, 0.01):  # 11% to 80%
+            # Initialize wealth and superannuation
             wealth = current_wealth
             superannuation = current_superannuation
             wealth_history = []
             super_history = []
+            bankrupt = False  # Flag to track bankruptcy
 
             # Simulate from current age to age 120
             for age in range(age_now, 121):
                 if age < retirement_age:
+                    # Working age
                     wealth = (
                         wealth * (1 + real_annual_return)
-                        + annual_income * (1 - super_contribution_rate)
-                        - annual_expenses
+                        + income * (1 - super_contribution_rate)
+                        - expenses
                     )
                     superannuation = (
                         superannuation * (1 + real_annual_return)
-                        + annual_income * super_contribution_rate
+                        + income * super_contribution_rate
                     )
                 elif age < 60:
-                    wealth = wealth * (1 + real_annual_return) - annual_expenses
+                    # Retirement but pre-preservation age (before 60)
+                    wealth = wealth * (1 + real_annual_return) - expenses
                     superannuation = superannuation * (1 + real_annual_return)
                 else:
-                    superannuation = (
-                        superannuation * (1 + real_annual_return) - annual_expenses
-                    )
+                    # Preservation age (60 and above)
+                    W_new = wealth * (1 + real_annual_return)
+                    if W_new >= expenses:
+                        # Case A: Withdraw expenses from wealth
+                        wealth = W_new - expenses
+                        superannuation = superannuation * (1 + real_annual_return)
+                    elif W_new > 0 and W_new < expenses:
+                        # Case B: Withdraw all wealth and the remaining from superannuation
+                        amount_from_wealth = W_new
+                        wealth = 0
+                        amount_from_super = expenses - amount_from_wealth
+                        superannuation = (
+                            superannuation * (1 + real_annual_return)
+                            - amount_from_super
+                        )
+                    else:
+                        # Case C: Withdraw expenses entirely from superannuation
+                        wealth = 0
+                        superannuation = (
+                            superannuation * (1 + real_annual_return) - expenses
+                        )
 
+                # Check if bankrupt (wealth or superannuation go negative)
+                if wealth < 0 or superannuation < 0:
+                    bankrupt = True
+                    break
+
+                # Append to history
                 wealth_history.append(wealth)
                 super_history.append(superannuation)
 
-            # Check if both wealth and superannuation are non-negative until age 120
-            if wealth >= 0 and superannuation >= 0:
+            # Check if we never went bankrupt and found a solution
+            if not bankrupt:
                 optimal_retirement_age = retirement_age
                 optimal_contribution = super_contribution_rate
                 optimal_wealth_history = wealth_history
@@ -174,14 +201,93 @@ def optimise_retirement_age_and_super_contribution(
         if optimal_retirement_age is not None:
             break  # Found a valid solution; break outer loop
 
-    # Return the optimal results and DataFrame for further use
-    df_history = pd.DataFrame(
-        {
-            "Age": range(age_now, 121),
-            "Wealth": optimal_wealth_history,
-            "Superannuation": optimal_super_history,
-        }
-    )
+    # If no valid solution was found, set optimal values to None or handle appropriately
+    if optimal_retirement_age is None:
+        # Handle the scenario where no combination prevents bankruptcy
+        # For example, set to maximum retirement_age and highest contribution rate
+        # Or raise an exception, or return specific indicators
+        # Here, we'll set to age 60 and super_contribution_rate of 80%
+        optimal_retirement_age = 60
+        optimal_contribution = 0.80
+        wealth_history = []
+        super_history = []
+        bankrupt = False
+
+        # Simulate with retirement_age=60 and super_contribution_rate=80%
+        for age in range(age_now, 121):
+            if age < optimal_retirement_age:
+                # Working age
+                wealth = (
+                    current_wealth * (1 + real_annual_return)
+                    + income * (1 - optimal_contribution)
+                    - expenses
+                )
+                superannuation = (
+                    current_superannuation * (1 + real_annual_return)
+                    + income * optimal_contribution
+                )
+            elif age < 60:
+                # Retirement but pre-preservation age (before 60)
+                wealth = wealth * (1 + real_annual_return) - expenses
+                superannuation = superannuation * (1 + real_annual_return)
+            else:
+                # Preservation age (60 and above)
+                W_new = wealth * (1 + real_annual_return)
+                if W_new >= expenses:
+                    # Case A: Withdraw expenses from wealth
+                    wealth = W_new - expenses
+                    superannuation = superannuation * (1 + real_annual_return)
+                elif W_new > 0 and W_new < expenses:
+                    # Case B: Withdraw all wealth and the remaining from superannuation
+                    amount_from_wealth = W_new
+                    wealth = 0
+                    amount_from_super = expenses - amount_from_wealth
+                    superannuation = (
+                        superannuation * (1 + real_annual_return) - amount_from_super
+                    )
+                else:
+                    # Case C: Withdraw expenses entirely from superannuation
+                    wealth = 0
+                    superannuation = (
+                        superannuation * (1 + real_annual_return) - expenses
+                    )
+
+            # Check if bankrupt
+            if wealth < 0 or superannuation < 0:
+                bankrupt = True
+                break
+
+            # Append to history
+            wealth_history.append(wealth)
+            super_history.append(superannuation)
+
+        if not bankrupt:
+            optimal_wealth_history = wealth_history
+            optimal_super_history = super_history
+        else:
+            # No valid solution even with maximum contribution rate
+            # Handle accordingly; for simplicity, set histories to None
+            optimal_wealth_history = None
+            optimal_super_history = None
+
+    # Handle the scenario where optimal_wealth_history might still be None
+    if optimal_wealth_history is not None and optimal_super_history is not None:
+        df_history = pd.DataFrame(
+            {
+                "Age": range(age_now, age_now + len(optimal_wealth_history)),
+                "Wealth": optimal_wealth_history,
+                "Superannuation": optimal_super_history,
+            }
+        )
+    else:
+        # If no valid history found, return an empty DataFrame or handle appropriately
+        df_history = pd.DataFrame(
+            {
+                "Age": [],
+                "Wealth": [],
+                "Superannuation": [],
+            }
+        )
 
     return optimal_retirement_age, optimal_contribution, df_history
 
@@ -323,12 +429,12 @@ def main():
     st.title("Financial Independence Retire Early Stochastic Forecaster")
     (
         current_wealth,
-        annual_income,
+        income,
         current_superannuation,
-        annual_expenses,
+        expenses,
         real_annual_return,
         age_now,
-        # sex,
+        sex,
         stock_percent,
         bond_percent,
         cash_percent,
@@ -337,23 +443,23 @@ def main():
     optimal_age, optimal_contribution, df_history = (
         optimise_retirement_age_and_super_contribution(
             current_wealth,
-            annual_income,
+            income,
             current_superannuation,
-            annual_expenses,
+            expenses,
             real_annual_return,
             age_now,
         )
     )
     # Display the final results in a clean, formatted way
-    st.markdown("### 🎯 **Optimization Results**")
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    st.markdown("### 🎯 **Optimisation Results**")
+    age, rate, balance = st.columns(3)
+    with age:
         st.success(f"**Optimal Retirement Age:** {optimal_age}")
-    with col2:
+    with rate:
         st.success(
             f"**Optimal Superannuation Contribution Rate:** {optimal_contribution:.0%}"
         )
-    with col3:
+    with balance:
         st.success(
             f"**Max Super Balance Required:** ${df_history['Superannuation'].max():,.0f}"
         )
