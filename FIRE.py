@@ -1,4 +1,5 @@
 # Standard library imports
+import math
 
 # Third-party imports
 import numpy as np
@@ -27,8 +28,49 @@ def user_inputs():
         finances, split, age = st.columns(3)  # Create columns inside the expander
 
         with finances:
-            assets, cashflow = st.columns(2)
-            with assets:
+            time_period, tax_status = st.columns(2)
+            with time_period:
+                period = st.selectbox(
+                    "Time Period",
+                    ["Annual", "Monthly", "Fortnightly", "Weekly"],
+                    label_visibility="collapsed",
+                )
+            with tax_status:
+                tax = st.checkbox("Pre-tax?", value=True)
+            income = st.number_input(
+                "Income [$]",
+                min_value=0,
+                value=100000,
+                step=1000,
+                help="Enter your income.",
+            )
+            if period == "Monthly":
+                income *= 12
+            elif period == "Fortnightly":
+                income *= 26
+            elif period == "Weekly":
+                income *= 52
+
+            if tax:
+                if income <= 45000:
+                    income -= (income - 18200) * 0.16
+                elif income <= 135000:
+                    income -= 4288 + (income - 45000) * 0.30
+                elif income <= 190000:
+                    income -= 31288 + (income - 135000) * 0.37
+                else:
+                    income -= 51638 + (income - 190000) * 0.45
+
+            expenses = st.number_input(
+                "Annual Expenses [$]",
+                min_value=0,
+                value=50000,
+                step=1000,
+                help="Enter your annual living expenses.",
+            )
+
+            w, s = st.columns(2)
+            with w:
                 current_wealth = st.number_input(
                     "Net Worth [$]",
                     min_value=0,
@@ -36,6 +78,7 @@ def user_inputs():
                     step=1000,
                     help="Enter your current wealth outside of super.",
                 )
+            with s:
                 current_superannuation = st.number_input(
                     "Super [$]",
                     min_value=0,
@@ -43,28 +86,64 @@ def user_inputs():
                     step=1000,
                     help="Enter your current superannuation balance.",
                 )
-            with cashflow:
-                income = st.number_input(
-                    "Annual Income [$]",
-                    min_value=0,
-                    value=100000,
-                    step=1000,
-                    help="Enter your annual income after tax.",
-                )
-                expenses = st.number_input(
-                    "Annual Expenses [$]",
-                    min_value=0,
-                    value=50000,
-                    step=1000,
-                    help="Enter your annual living expenses.",
-                )
-
         with split:
+            html_string = """  <div class="wrapper">
+  <div class="container">
+
+    <div class="slider-wrapper">
+      <div id="slider-range"></div>
+
+      <div class="range-wrapper">
+        <div class="range"></div>
+        <div class="range-alert">+</div>
+
+        <div class="gear-wrapper">
+          <div class="gear-large gear-one">
+            <div class="gear-tooth"></div>
+            <div class="gear-tooth"></div>
+            <div class="gear-tooth"></div>
+            <div class="gear-tooth"></div>
+          </div>
+          <div class="gear-large gear-two">
+            <div class="gear-tooth"></div>
+            <div class="gear-tooth"></div>
+            <div class="gear-tooth"></div>
+            <div class="gear-tooth"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="marker marker-0"><sup>$</sup>10,000</div>
+      <div class="marker marker-25"><sup>$</sup>35,000</div>
+      <div class="marker marker-50"><sup>$</sup>60,000</div>
+      <div class="marker marker-75"><sup>$</sup>85,000</div>
+      <div class="marker marker-100"><sup>$</sup>110,000+</div>
+    </div>
+
+  </div>
+</div>
+
+"""
+            # st.components.v1.html(html_string, height=700)
+            profile = st.selectbox(
+                "Select Option",
+                ["Conservative", "Balanced", "Growth", "High Growth"],
+                label_visibility="collapsed",
+            )
+            if profile == "Conservative":
+                stock_bond_split = (25, 85)
+            elif profile == "Balanced":
+                stock_bond_split = (50, 90)
+            elif profile == "Growth":
+                stock_bond_split = (80, 95)
+            elif profile == "High Growth":
+                stock_bond_split = (90, 95)
             stock_bond_split = st.slider(
                 "Stock / Bond / Cash Split [%]",
                 min_value=0,
                 max_value=100,
-                value=(33, 67),
+                value=(stock_bond_split),
                 help="Slide to adjust the percentage of your portfolio allocated to stocks and bonds.",
             )
             stock_percent = stock_bond_split[0] / 100
@@ -79,6 +158,7 @@ def user_inputs():
                 100 - stock_bond_split[1],
                 "%",
             )
+
             real_annual_return = (
                 stock_return * stock_percent
                 + bond_return * bond_percent
@@ -87,6 +167,7 @@ def user_inputs():
             )
 
         with age:
+            life_table = pd.read_csv("ABS 2020 Life Table.csv")
             age_now = st.number_input(
                 "Age [years]",
                 min_value=0,
@@ -99,6 +180,15 @@ def user_inputs():
                 ["Male", "Female"],
                 help="Used in Probability of Sufficiency plot to determine probability of mortality.",
             )
+            if sex == "Male":
+                # Get the expected remaining life for males
+                ex = life_table.loc[life_table["Age"] == age_now, "exm"].values[0]
+            else:
+                # Get the expected remaining life for females
+                ex = life_table.loc[life_table["Age"] == age_now, "exf"].values[0]
+
+            # Expected lifespan is current age plus the remaining life expectancy
+            expected_lifespan = math.ceil(age_now + ex)
 
     return (
         current_wealth,
@@ -108,6 +198,7 @@ def user_inputs():
         real_annual_return,
         age_now,
         sex,
+        expected_lifespan,
         stock_percent,
         bond_percent,
         cash_percent,
@@ -124,6 +215,7 @@ def optimise_retirement_age_and_super_contribution(
     expenses,
     real_annual_return,
     age_now,
+    expected_lifespan,
 ):
     optimal_retirement_age = None
     optimal_contribution = None
@@ -131,9 +223,11 @@ def optimise_retirement_age_and_super_contribution(
     optimal_super_history = None
 
     # Iterate over possible retirement ages
-    for retirement_age in range(age_now, 61):  # Include age 60
+    for retirement_age in range(age_now, expected_lifespan):  # Include age 60
         # Iterate over super_contribution_rate from 11% to 80% in 1% steps
-        for super_contribution_rate in np.arange(0.11, 0.81, 0.01):  # 11% to 80%
+        for super_contribution_rate in reversed(
+            np.arange(0.11, 0.99, 0.01)
+        ):  # 11% to 80%
             # Initialize wealth and superannuation
             wealth = current_wealth
             superannuation = current_superannuation
@@ -141,8 +235,9 @@ def optimise_retirement_age_and_super_contribution(
             super_history = []
             bankrupt = False  # Flag to track bankruptcy
 
-            # Simulate from current age to age 120
-            for age in range(age_now, 121):
+            # Simulate from current age to expected lifespan
+            for age in range(age_now, expected_lifespan):
+                # TODO: Age needs to be dynamic, based off of expected life span from Life Table
                 if age < retirement_age:
                     # Working age
                     wealth = (
@@ -159,27 +254,18 @@ def optimise_retirement_age_and_super_contribution(
                     wealth = wealth * (1 + real_annual_return) - expenses
                     superannuation = superannuation * (1 + real_annual_return)
                 else:
-                    # Preservation age (60 and above)
-                    W_new = wealth * (1 + real_annual_return)
-                    if W_new >= expenses:
+                    if wealth >= expenses:
                         # Case A: Withdraw expenses from wealth
-                        wealth = W_new - expenses
+                        wealth = wealth * (1 + real_annual_return) - expenses
                         superannuation = superannuation * (1 + real_annual_return)
-                    elif W_new > 0 and W_new < expenses:
+                    elif wealth < expenses:
                         # Case B: Withdraw all wealth and the remaining from superannuation
-                        amount_from_wealth = W_new
-                        wealth = 0
-                        amount_from_super = expenses - amount_from_wealth
                         superannuation = (
                             superannuation * (1 + real_annual_return)
-                            - amount_from_super
+                            + wealth
+                            - expenses
                         )
-                    else:
-                        # Case C: Withdraw expenses entirely from superannuation
                         wealth = 0
-                        superannuation = (
-                            superannuation * (1 + real_annual_return) - expenses
-                        )
 
                 # Check if bankrupt (wealth or superannuation go negative)
                 if wealth < 0 or superannuation < 0:
@@ -288,7 +374,6 @@ def optimise_retirement_age_and_super_contribution(
                 "Superannuation": [],
             }
         )
-
     return optimal_retirement_age, optimal_contribution, df_history
 
 
@@ -435,11 +520,11 @@ def main():
         real_annual_return,
         age_now,
         sex,
+        expected_lifespan,
         stock_percent,
         bond_percent,
         cash_percent,
     ) = user_inputs()
-
     optimal_age, optimal_contribution, df_history = (
         optimise_retirement_age_and_super_contribution(
             current_wealth,
@@ -448,8 +533,10 @@ def main():
             expenses,
             real_annual_return,
             age_now,
+            expected_lifespan,
         )
     )
+
     # Display the final results in a clean, formatted way
     st.markdown("### 🎯 **Optimisation Results**")
     age, rate, balance = st.columns(3)
@@ -472,33 +559,6 @@ def main():
 
     if option == "Expected Wealth and Superannuation":
         if not df_history.empty:
-            # Assuming stock_percent, bond_percent, and cash_percent are the percentage allocations
-            stock_allocation = stock_percent
-            bond_allocation = bond_percent
-            cash_allocation = cash_percent
-
-            # Define an exponential scaling factor for the standard deviation
-            age_factor = np.exp(
-                np.linspace(0, 1.5, len(df_history))
-            )  # Exponential increase to create a "blooming" effect
-
-            # Compute the portfolio variance for each year
-            portfolio_variance = (
-                (stock_error * 3 * stock_allocation * df_history["Wealth"]) ** 2
-                + (bond_error * 3 * bond_allocation * df_history["Wealth"]) ** 2
-                + (cash_error * 3 * cash_allocation * df_history["Wealth"]) ** 2
-            )
-
-            # The total portfolio standard deviation that increases exponentially with age
-            total_std_dev = (portfolio_variance**0.5) * age_factor
-
-            upper_bound_wealth = df_history["Wealth"] + total_std_dev
-            lower_bound_wealth = df_history["Wealth"] - total_std_dev
-
-            # Repeat for superannuation
-            upper_bound_super = df_history["Superannuation"] + total_std_dev
-            lower_bound_super = df_history["Superannuation"] - total_std_dev
-
             # Plot using Plotly
             fig = go.Figure()
 
@@ -513,28 +573,6 @@ def main():
                 )
             )
 
-            # Add wealth bounds with more transparency
-            fig.add_trace(
-                go.Scatter(
-                    x=df_history["Age"],
-                    y=upper_bound_wealth,
-                    mode="lines",
-                    line=dict(width=0),
-                    showlegend=False,
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=df_history["Age"],
-                    y=lower_bound_wealth,
-                    mode="lines",
-                    fill="tonexty",
-                    fillcolor="rgba(0, 0, 255, 0.2)",  # Increase transparency
-                    line=dict(width=0),
-                    showlegend=False,
-                )
-            )
-
             # Plot superannuation
             fig.add_trace(
                 go.Scatter(
@@ -543,28 +581,6 @@ def main():
                     mode="lines",
                     name="Superannuation",
                     line=dict(color="green", width=2),  # Increase line thickness
-                )
-            )
-
-            # Add superannuation bounds with more transparency
-            fig.add_trace(
-                go.Scatter(
-                    x=df_history["Age"],
-                    y=upper_bound_super,
-                    mode="lines",
-                    line=dict(width=0),
-                    showlegend=False,
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=df_history["Age"],
-                    y=lower_bound_super,
-                    mode="lines",
-                    fill="tonexty",
-                    fillcolor="rgba(0, 255, 0, 0.2)",  # Increase transparency
-                    line=dict(width=0),
-                    showlegend=False,
                 )
             )
 
@@ -595,3 +611,6 @@ if __name__ == "__main__":
     cash_return = 0.03
     cash_error = 0.02
     main()
+# TODO: Retirement Date Probability Distribution
+# TODO: Savings Rate Sensitivity
+# TODO: Nominal vs real
